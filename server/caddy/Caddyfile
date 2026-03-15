@@ -1,0 +1,28 @@
+# /etc/caddy/Caddyfile
+# Base config — TLS termination only.
+# Claude proxy and Spotify blocks are added in their own steps.
+#
+# Requires /etc/caddy/.env with DOMAIN and ACME_EMAIL set.
+
+{
+    # Global options
+    email {$ACME_EMAIL}
+
+    # Caddy admin API — localhost only, never expose externally
+    admin localhost:2019
+
+    # Let's Encrypt staging — flip to prod once DNS is confirmed
+    # acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+# ── Health check / baseline HTTPS ─────────────────────────────────────────────
+{$DOMAIN} {
+    # TLS is automatic via Let's Encrypt (requires port 80 open for ACME HTTP-01)
+    tls {$ACME_EMAIL}
+
+    # Shallow health endpoint — used to verify TLS is working before adding proxies
+    respond /health "ok" 200
+
+    # Drop everything else at the base domain
+    respond 404
+}
