@@ -18,9 +18,12 @@ ufw default allow outgoing
 # SSH — must come before 'enable'
 ufw allow 22/tcp comment "SSH"
 
-# Caddy — HTTP for ACME challenge, HTTPS for everything else
-ufw allow 80/tcp  comment "Caddy ACME / redirect"
-ufw allow 443/tcp comment "Caddy TLS"
+# Caddy — HTTP for ACME challenge, HTTPS for health/probe endpoints
+ufw allow 80/tcp   comment "Caddy ACME / redirect"
+ufw allow 443/tcp  comment "Caddy TLS"
+
+# gost — HTTPS CONNECT proxy for Claude (TLS, auth required)
+ufw allow 8443/tcp comment "gost Claude proxy"
 
 # Enable (non-interactive)
 ufw --force enable

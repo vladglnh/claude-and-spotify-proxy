@@ -28,20 +28,25 @@ chmod 750 "${GOST_DIR}"
 if [ ! -f "${GOST_DIR}/.env" ]; then
     cp "$(dirname "$0")/.env.example" "${GOST_DIR}/.env"
     chmod 640 "${GOST_DIR}/.env"
-    echo ">>> Created ${GOST_DIR}/.env — fill in GOST_USER and GOST_PASS before starting"
+    echo ">>> Created ${GOST_DIR}/.env — fill in all four variables before starting"
 else
     echo ">>> ${GOST_DIR}/.env already exists, skipping"
 fi
 
 # ---------- 4. systemd unit ----------
+# gost listens on :8443 with TLS directly — no Caddy reverse_proxy needed.
+# Cert files are read from Caddy's data directory; gost must restart after
+# Caddy renews certs (every ~60 days). Add a monthly cron or OnCalendar
+# timer if you want this automated.
 cat > /etc/systemd/system/gost-claude.service <<'EOF'
 [Unit]
 Description=gost HTTP CONNECT proxy for Claude
-After=network.target
+After=network.target caddy.service
+Requires=caddy.service
 
 [Service]
 EnvironmentFile=/etc/gost/.env
-ExecStart=/usr/local/bin/gost -L "http://${GOST_USER}:${GOST_PASS}@127.0.0.1:8443"
+ExecStart=/usr/local/bin/gost -L "http+tls://${GOST_USER}:${GOST_PASS}@:8443?certFile=${GOST_CERT}&keyFile=${GOST_KEY}"
 Restart=on-failure
 RestartSec=5s
 
@@ -54,6 +59,10 @@ systemctl enable gost-claude
 
 echo ""
 echo ">>> Done. Next steps:"
-echo "    1. Fill in /etc/gost/.env  (GOST_USER and GOST_PASS)"
-echo "    2. systemctl start gost-claude"
-echo "    3. journalctl -u gost-claude -f   # watch logs"
+echo "    1. Fill in /etc/gost/.env (GOST_USER, GOST_PASS, GOST_CERT, GOST_KEY)"
+echo "    2. Make sure Caddy is running and has issued a cert first"
+echo "    3. systemctl start gost-claude"
+echo "    4. journalctl -u gost-claude -f   # watch logs"
+echo ""
+echo "    Cert path hint:"
+echo "    ls /var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/"
