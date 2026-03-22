@@ -1,8 +1,5 @@
 # Caddyfile.snippet — вставить ВНУТРЬ блока {$DOMAIN},
-# перед финальным "respond 404".
-#
-# Также в глобальном блоке {} нужна строка:
-#   order forward_proxy before respond
+# перед финальным "respond 404" (или вместо него — reverse_proxy перехватит всё остальное).
 #
 # Итоговый блок в /etc/caddy/Caddyfile должен выглядеть так:
 
@@ -11,13 +8,19 @@
 
     respond /health "ok" 200
 
-    # ── Claude HTTP CONNECT proxy ──────────────────────────────────────────────
-    forward_proxy {
-        basic_auth {$CLAUDE_PROXY_USER} {$CLAUDE_PROXY_PASS_HASH}
-        hide_ip
-        hide_via
+    # ── Debug probe: прямой запрос к api.anthropic.com ────────────────────────
+    # Проверяет исходящую сеть и TLS к Anthropic без участия gost.
+    # curl https://$DOMAIN/probe  → должен вернуть 401 от Anthropic (не ошибку сети)
+    handle /probe {
+        rewrite * /v1/models
+        reverse_proxy https://api.anthropic.com {
+            header_up Host api.anthropic.com
+        }
     }
     # ──────────────────────────────────────────────────────────────────────────
 
-    respond 404
+    # ── Claude HTTP CONNECT proxy (gost на localhost:8443) ────────────────────
+    # Кадди принимает TLS, gost обрабатывает HTTP CONNECT и авторизацию.
+    reverse_proxy localhost:8443
+    # ──────────────────────────────────────────────────────────────────────────
 }

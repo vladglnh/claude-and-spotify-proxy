@@ -1,40 +1,45 @@
 # claude/server/
 
-Добавляет HTTP CONNECT прокси для Claude в уже работающий Caddy.
+Подключает HTTP CONNECT прокси для Claude к уже работающему Caddy + gost.
 
-**Предусловие:** `server/caddy/` настроен, `curl https://$DOMAIN/health` возвращает `ok`.
+**Предусловие:** `server/` настроен полностью — Caddy запущен, `curl https://$DOMAIN/health` возвращает `ok`, `gost-claude` запущен.
 
 ## Что здесь есть
 
 | Файл | Назначение |
 |---|---|
-| `Caddyfile.snippet` | Блок `forward_proxy`, который нужно вставить в `/etc/caddy/Caddyfile` |
-| `.env.example` | Переменные с логином и хешем пароля — добавить в `/etc/caddy/.env` |
+| `Caddyfile.snippet` | Блоки `/probe` и `reverse_proxy`, которые нужно вставить в `/etc/caddy/Caddyfile` |
+| `.env.example` | Переменные с логином и паролем — уже должны быть в `/etc/gost/.env` |
+
+## Архитектура
+
+```
+Клиент ──HTTPS CONNECT──► VPS:443 (Caddy, TLS) ──► localhost:8443 (gost, HTTP CONNECT + auth)
+                                                  └► /health, /probe  (Caddy отвечает напрямую)
+```
+
+Caddy завершает TLS и пробрасывает всё через `reverse_proxy localhost:8443`.
+gost обрабатывает HTTP CONNECT и проверяет Basic Auth (GOST_USER / GOST_PASS).
 
 ## Инструкция
 
-### 1. Сгенерировать хеш пароля
-
-На сервере:
+### 1. Убедиться, что gost запущен с нужными учётными данными
 
 ```bash
-caddy hash-password --plaintext 'придумай-пароль'
+cat /etc/gost/.env          # GOST_USER и GOST_PASS должны быть заполнены
+systemctl status gost-claude
 ```
 
-Скопируй вывод — он понадобится на следующем шаге.
-
-### 2. Дополнить /etc/caddy/.env
+Если нужно изменить пароль — отредактируй `/etc/gost/.env` и перезапусти:
 
 ```bash
-# Добавь в /etc/caddy/.env (образец в .env.example):
-CLAUDE_PROXY_USER=имя-пользователя
-CLAUDE_PROXY_PASS_HASH='<вывод команды выше>'   # одинарные кавычки обязательны — хеш содержит $
+systemctl restart gost-claude
 ```
 
-### 3. Вставить фрагмент в Caddyfile
+### 2. Вставить фрагмент в Caddyfile
 
-Открой `/etc/caddy/Caddyfile` и вставь содержимое `Caddyfile.snippet`
-внутрь блока `{$DOMAIN} { … }`, **перед строкой `respond 404`**:
+Открой `/etc/caddy/Caddyfile` и замени содержимое блока `{$DOMAIN} { … }`
+на то, что показано в `Caddyfile.snippet`:
 
 ```
 {$DOMAIN} {
@@ -42,15 +47,13 @@ CLAUDE_PROXY_PASS_HASH='<вывод команды выше>'   # одинарн
 
     respond /health "ok" 200
 
-    # ← сюда вставить блоки basic_auth и forward_proxy из Caddyfile.snippet
+    # ← сюда вставить блоки handle /probe и reverse_proxy из Caddyfile.snippet
 
-    respond 404
+    respond 404   # эта строка станет недостижимой — можно убрать
 }
 ```
 
-После правки файл должен выглядеть как в `Caddyfile.snippet`.
-
-### 4. Проверить конфиг и перезагрузить
+### 3. Проверить конфиг и перезагрузить Caddy
 
 ```bash
 set -a && source /etc/caddy/.env && set +a
@@ -59,11 +62,17 @@ systemctl reload caddy
 journalctl -u caddy -f          # убедись, что нет ошибок
 ```
 
-### 5. Smoke-тест с сервера
+### 4. Smoke-тест с сервера
 
 ```bash
-# Должен вернуть 401 от api.anthropic.com (не ошибку соединения) — значит туннель работает
-curl -v -x https://$CLAUDE_PROXY_USER:$PLAIN_PASS@$DOMAIN \
+# Проверка /probe: исходящая сеть к Anthropic без прокси
+# Ожидаем 401 от api.anthropic.com — значит сеть и TLS работают
+curl https://$DOMAIN/probe
+
+# Проверка HTTP CONNECT через gost
+# Ожидаем 401 от api.anthropic.com — значит туннель работает
+GOST_USER=... GOST_PASS=...
+curl -v -x "http://${GOST_USER}:${GOST_PASS}@$DOMAIN:443" \
      https://api.anthropic.com/v1/models \
      -H "anthropic-version: 2023-06-01"
 ```
