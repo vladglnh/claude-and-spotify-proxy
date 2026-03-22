@@ -27,12 +27,23 @@ $EDITOR /etc/caddy/.env          # set DOMAIN and ACME_EMAIL
 # 4. Drop Caddyfile on the server
 cp server/caddy/Caddyfile /etc/caddy/Caddyfile
 
-# 5. Start
+# 5. (Optional) Uncomment acme_ca in Caddyfile to use Let's Encrypt staging
+#    while you verify DNS and port 80 are working — staging has no rate limits.
+#    Browser will show NET::ERR_CERT_AUTHORITY_INVALID; that is expected.
+$EDITOR /etc/caddy/Caddyfile
+
+# 6. Start
 systemctl start caddy
 journalctl -u caddy -f           # watch for TLS cert issuance
 
-# 6. Smoke test
+# 7. Smoke test
 curl https://$DOMAIN/health      # should return "ok"
+
+# 8. If you used staging: comment acme_ca back out, clear cert cache, restart
+#    to obtain a real certificate from prod Let's Encrypt.
+# $EDITOR /etc/caddy/Caddyfile
+# rm -rf /var/lib/caddy/.local/share/caddy/certificates/
+# systemctl restart caddy
 ```
 
 ## After base setup

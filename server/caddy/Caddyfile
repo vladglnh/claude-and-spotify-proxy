@@ -11,6 +11,9 @@
     # Caddy admin API — localhost only, never expose externally
     admin localhost:2019
 
+    # forward_proxy is not in Caddy's default handler order — declare it explicitly
+    order forward_proxy before respond
+
     # Let's Encrypt staging — flip to prod once DNS is confirmed
     # acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
 }

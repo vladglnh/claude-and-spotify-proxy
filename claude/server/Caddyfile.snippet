@@ -1,0 +1,23 @@
+# Caddyfile.snippet — вставить ВНУТРЬ блока {$DOMAIN},
+# перед финальным "respond 404".
+#
+# Также в глобальном блоке {} нужна строка:
+#   order forward_proxy before respond
+#
+# Итоговый блок в /etc/caddy/Caddyfile должен выглядеть так:
+
+{$DOMAIN} {
+    tls {$ACME_EMAIL}
+
+    respond /health "ok" 200
+
+    # ── Claude HTTP CONNECT proxy ──────────────────────────────────────────────
+    forward_proxy {
+        basic_auth {$CLAUDE_PROXY_USER} {$CLAUDE_PROXY_PASS_HASH}
+        hide_ip
+        hide_via
+    }
+    # ──────────────────────────────────────────────────────────────────────────
+
+    respond 404
+}

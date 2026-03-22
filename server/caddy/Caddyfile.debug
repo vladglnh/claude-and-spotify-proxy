@@ -1,0 +1,48 @@
+# /etc/caddy/Caddyfile — debug state (зафиксировано 2026-03-22)
+#
+# Это рабочий конфиг, подтверждённый тестами:
+#   - /health → "ok_test"
+#   - /probe  → 401 от api.anthropic.com (reverse_proxy работает, сеть ОК)
+#
+# Следующий шаг: добавить forward_proxy для HTTP CONNECT.
+# Требует caddy, собранного через xcaddy с плагином caddyserver/forwardproxy.
+#
+# Requires /etc/caddy/.env:
+#   DOMAIN=...
+#   ACME_EMAIL=...
+#   CLAUDE_PROXY_USER=...
+#   CLAUDE_PROXY_PASS=...   ← plaintext, НЕ хеш (плагин сравнивает напрямую)
+
+{
+    email {$ACME_EMAIL}
+    admin localhost:2019
+
+    # Нужно только после добавления forward_proxy
+    order forward_proxy before respond
+}
+
+{$DOMAIN} {
+    tls {$ACME_EMAIL}
+
+    # Health check
+    respond /health "ok_test" 200
+
+    # Debug probe: reverse_proxy → api.anthropic.com/v1/models
+    # Подтверждает: исходящая сеть, TLS к Anthropic, маршрутизация — всё работает.
+    # Можно убрать после того как forward_proxy заработает.
+    handle /probe {
+        rewrite * /v1/models
+        reverse_proxy https://api.anthropic.com {
+            header_up Host api.anthropic.com
+        }
+    }
+
+    # forward_proxy — добавить сюда после подтверждения caddy list-modules | grep forward
+    # forward_proxy {
+    #     basic_auth {$CLAUDE_PROXY_USER} {$CLAUDE_PROXY_PASS}
+    #     hide_ip
+    #     hide_via
+    # }
+
+    respond 404
+}
